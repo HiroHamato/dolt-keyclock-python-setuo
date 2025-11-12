@@ -1,0 +1,7 @@
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+pymysql==1.1.0
+sqlalchemy>=2.0.36
+python-keycloak==2.10.0
+cryptography>=41.0.0
+setuptools>=65.0.0

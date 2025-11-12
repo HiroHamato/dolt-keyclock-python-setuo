@@ -1,0 +1,92 @@
+version: '3.8'
+
+services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:latest
+    container_name: keycloak
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres-keycloak:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: keycloak
+      KC_HTTP_ENABLED: "true"
+      KC_HTTPS_ENABLED: "true"
+      KC_HTTPS_PORT: "8443"
+      KC_HTTPS_CERTIFICATE_FILE: /etc/keycloak/certs/keycloak-cert.pem
+      KC_HTTPS_CERTIFICATE_KEY_FILE: /etc/keycloak/certs/keycloak-key.pem
+      KC_HOSTNAME_STRICT: "false"
+      KC_HOSTNAME_STRICT_HTTPS: "false"
+    ports:
+      - "8080:8080"
+      - "8443:8443"
+    volumes:
+      - ./certs:/etc/keycloak/certs:ro
+    command: start-dev
+    networks:
+      - app-network
+    depends_on:
+      - postgres-keycloak
+    restart: unless-stopped
+
+  postgres-keycloak:
+    image: postgres:15-alpine
+    container_name: postgres-keycloak
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: keycloak
+    volumes:
+      - postgres-keycloak-data:/var/lib/postgresql/data
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  dolt:
+    image: dolthub/dolt-sql-server:latest
+    container_name: dolt
+    environment:
+      DOLT_ROOT_PATH: /var/lib/dolt
+      DOLT_USER_NAME: "dolt"
+      DOLT_USER_EMAIL: "dolt@example.com"
+    ports:
+      - "3306:3306"
+      - "50051:50051"
+    volumes:
+      - dolt-data:/var/lib/dolt
+    networks:
+      - app-network
+    restart: unless-stopped
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["cd /var/lib/dolt && dolt sql-server --host 0.0.0.0 --port 3306 & sleep 3 && dolt sql -q \"CREATE USER IF NOT EXISTS 'root'@'%' IDENTIFIED BY ''; GRANT ALL PRIVILEGES ON *.* TO 'root'@'%' WITH GRANT OPTION; FLUSH PRIVILEGES;\" && wait"]
+
+  python-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: python-app
+    environment:
+      - DOLT_HOST=dolt
+      - DOLT_PORT=3306
+      - KEYCLOAK_URL=https://keycloak:8443
+      - KEYCLOAK_REALM=master
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./app:/app/app
+    networks:
+      - app-network
+    depends_on:
+      - dolt
+      - keycloak
+    restart: unless-stopped
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  postgres-keycloak-data:
+  dolt-data:
+
